@@ -187,7 +187,7 @@ public class NativeExecutionTask
         }
     }
 
-    private TaskInfo sendUpdateRequest()
+    protected TaskInfo sendUpdateRequest()
     {
         return workerClient.updateTask(
                 taskId,

@@ -28,6 +28,7 @@ import com.facebook.presto.operator.PageTransportErrorException;
 import com.facebook.presto.server.SimpleHttpResponseCallback;
 import com.facebook.presto.server.SimpleHttpResponseHandlerStats;
 import com.facebook.presto.server.TaskUpdateRequest;
+import com.facebook.presto.spark.execution.http.StreamingBatchTaskUpdateRequest.StreamingTaskUpdateRequest;
 import com.facebook.presto.spark.execution.http.server.RequestErrorTracker;
 import com.facebook.presto.spark.execution.http.server.SimpleHttpResponseHandler;
 import com.facebook.presto.spark.execution.http.server.smile.BaseResponse;
@@ -61,6 +62,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -265,6 +267,69 @@ public class PrestoSparkHttpTaskClient
                 .addPathSegment("batch")
                 .build();
         byte[] requestBody = taskUpdateRequestCodec.toBytes(batchTaskUpdateRequest);
+        Request request = setContentTypeHeaders(new Request.Builder())
+                .url(url)
+                .post(RequestBody.create(MediaType.parse(JSON_UTF_8.toString()), requestBody))
+                .build();
+        ListenableFuture<TaskInfo> future = executeWithRetries(
+                "updateTask",
+                "create or update remote task",
+                request,
+                createAdaptingJsonResponseHandler(taskInfoCodec));
+        return getFutureValue(future);
+    }
+
+    /**
+     * Streaming counterpart of {@link #updateTask}, used only when
+     * {@code native_execution_stream_task_sources_enabled} is set. The request is the same, but
+     * the task sources are pulled from {@code sources} while the body is being written, instead
+     * of being held in a list first, so the whole split set is never alive at once.
+     *
+     * <p>{@code sources} is consumed exactly once, here. The body is fully formed before the
+     * request is sent, so retries resend the bytes and never re-read the iterator.
+     *
+     * <p>An exception thrown by {@code sources} is rethrown as is, as it would be on the
+     * non-streaming path, where the sources are built before serialization.
+     */
+    public TaskInfo updateTaskStreaming(
+            TaskId taskId,
+            Iterator<TaskSource> sources,
+            PlanFragment planFragment,
+            TableWriteInfo tableWriteInfo,
+            Optional<String> shuffleWriteInfo,
+            Optional<String> broadcastBasePath,
+            Session session,
+            OutputBuffers outputBuffers,
+            JsonCodec<StreamingBatchTaskUpdateRequest> streamingTaskUpdateRequestCodec)
+    {
+        Optional<byte[]> fragment = Optional.of(planFragment.bytesForTaskSerialization(planFragmentCodec));
+        Optional<TableWriteInfo> writeInfo = Optional.of(tableWriteInfo);
+        FailureRecordingIterator<TaskSource> recordingSources = new FailureRecordingIterator<>(sources);
+        StreamingTaskUpdateRequest updateRequest = new StreamingTaskUpdateRequest(
+                session.toSessionRepresentation(),
+                session.getIdentity().getExtraCredentials(),
+                fragment,
+                recordingSources,
+                outputBuffers,
+                writeInfo);
+        StreamingBatchTaskUpdateRequest batchTaskUpdateRequest = new StreamingBatchTaskUpdateRequest(updateRequest, shuffleWriteInfo, broadcastBasePath);
+
+        HttpUrl url = HttpUrl.get(getTaskUri(taskId)).newBuilder()
+                .addPathSegment("batch")
+                .build();
+        byte[] requestBody;
+        try {
+            requestBody = streamingTaskUpdateRequestCodec.toBytes(batchTaskUpdateRequest);
+        }
+        catch (RuntimeException e) {
+            // Jackson wraps a failure of the sources iterator in a JsonMappingException, and
+            // JsonCodec wraps that in an IllegalArgumentException; unwrap it.
+            RuntimeException sourceFailure = recordingSources.getFailure();
+            if (sourceFailure != null) {
+                throw sourceFailure;
+            }
+            throw e;
+        }
         Request request = setContentTypeHeaders(new Request.Builder())
                 .url(url)
                 .post(RequestBody.create(MediaType.parse(JSON_UTF_8.toString()), requestBody))
@@ -544,6 +609,58 @@ public class PrestoSparkHttpTaskClient
         }
         catch (Throwable t) {
             result.setException(t);
+        }
+    }
+
+    /**
+     * Records the first exception thrown by the delegate, so that it can be rethrown after the
+     * serializer has wrapped it.
+     */
+    private static class FailureRecordingIterator<T>
+            implements Iterator<T>
+    {
+        private final Iterator<T> delegate;
+        private RuntimeException failure;
+
+        private FailureRecordingIterator(Iterator<T> delegate)
+        {
+            this.delegate = requireNonNull(delegate, "delegate is null");
+        }
+
+        @Override
+        public boolean hasNext()
+        {
+            try {
+                return delegate.hasNext();
+            }
+            catch (RuntimeException e) {
+                recordFailure(e);
+                throw e;
+            }
+        }
+
+        @Override
+        public T next()
+        {
+            try {
+                return delegate.next();
+            }
+            catch (RuntimeException e) {
+                recordFailure(e);
+                throw e;
+            }
+        }
+
+        private void recordFailure(RuntimeException e)
+        {
+            if (failure == null) {
+                failure = e;
+            }
+        }
+
+        private RuntimeException getFailure()
+        {
+            return failure;
         }
     }
 

@@ -24,6 +24,7 @@ import com.facebook.presto.execution.TaskSource;
 import com.facebook.presto.execution.scheduler.TableWriteInfo;
 import com.facebook.presto.spark.execution.http.BatchTaskUpdateRequest;
 import com.facebook.presto.spark.execution.http.PrestoSparkHttpTaskClient;
+import com.facebook.presto.spark.execution.http.StreamingBatchTaskUpdateRequest;
 import com.facebook.presto.spiller.LocalTempStorage;
 import com.facebook.presto.sql.planner.PlanFragment;
 import okhttp3.OkHttpClient;
@@ -32,6 +33,7 @@ import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
 import java.net.URI;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executor;
@@ -114,6 +116,53 @@ public class NativeExecutionTaskFactory
                 isFixedBroadcastDistribution ? broadcastBasePath : Optional.empty(),
                 scheduledExecutorService,
                 taskManagerConfig);
+    }
+
+    /**
+     * As {@link #createNativeExecutionTask}, but the splits are streamed into the update request
+     * instead of being materialized first. Used only when
+     * {@code native_execution_stream_task_sources_enabled} is set; see
+     * {@link StreamingNativeExecutionTask}. Kept separate so that the default path is unchanged.
+     */
+    public NativeExecutionTask createStreamingNativeExecutionTask(
+            Session session,
+            URI location,
+            TaskId taskId,
+            PlanFragment fragment,
+            Iterator<TaskSource> sourceStream,
+            TableWriteInfo tableWriteInfo,
+            Optional<byte[]> serializedNativeTempStorageHandle,
+            Optional<String> shuffleWriteInfo,
+            boolean isFixedBroadcastDistribution,
+            JsonCodec<StreamingBatchTaskUpdateRequest> streamingTaskUpdateRequestCodec)
+    {
+        Optional<String> broadcastBasePath =
+                serializedNativeTempStorageHandle.isPresent() ? Optional.of(
+                        LocalTempStorage.deserializeStatic(
+                                serializedNativeTempStorageHandle.get()).getPathAsString())
+                        : Optional.empty();
+        PrestoSparkHttpTaskClient workerClient = new PrestoSparkHttpTaskClient(
+                httpClient,
+                location,
+                taskInfoCodec,
+                planFragmentCodec,
+                taskUpdateRequestCodec,
+                taskManagerConfig.getInfoRefreshMaxWait(),
+                executor,
+                scheduledExecutorService,
+                queryManagerConfig.getRemoteTaskMaxErrorDuration());
+        return new StreamingNativeExecutionTask(
+                taskId,
+                session,
+                workerClient,
+                fragment,
+                sourceStream,
+                tableWriteInfo,
+                shuffleWriteInfo,
+                isFixedBroadcastDistribution ? broadcastBasePath : Optional.empty(),
+                scheduledExecutorService,
+                taskManagerConfig,
+                streamingTaskUpdateRequestCodec);
     }
 
     @PreDestroy

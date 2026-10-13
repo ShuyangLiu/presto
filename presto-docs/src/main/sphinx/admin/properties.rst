@@ -1930,7 +1930,25 @@ Presto on Spark Properties
 --------------------------
 
 These properties control how :doc:`Presto on Spark </admin/spark>` assigns table scan
-splits to Spark input partitions.
+splits to Spark input partitions and sends tasks to native workers.
+
+``native-execution-stream-task-sources-enabled``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* **Type:** ``boolean``
+* **Default value:** ``false``
+
+Deserialize a task's splits directly into the task update request that an executor sends to
+its native (Velox) worker, instead of deserializing them all first.
+
+An executor sends all of a task's splits to the native worker in one task update request.
+Without this property, the executor first deserializes every split and then serializes the
+request, so on a task with many splits the whole split set is on the executor heap at once.
+With this property enabled, each split is deserialized as the request is written and released
+right after, so only one is held at a time. The request sent to the worker is the same either
+way.
+
+The corresponding session property is :ref:`admin/properties-session:\`\`native_execution_stream_task_sources_enabled\`\``.
 
 ``spark.max-splits-count-per-partition``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

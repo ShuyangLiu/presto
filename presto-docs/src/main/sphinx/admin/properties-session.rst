@@ -1308,6 +1308,19 @@ enough splits into one partition for its serialized task update request to excee
 
 The corresponding configuration property is :ref:`admin/properties:\`\`spark.max-splits-count-per-partition\`\``.
 
+``native_execution_stream_task_sources_enabled``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+* **Type:** ``boolean``
+* **Default value:** ``false``
+
+Deserialize a task's splits directly into the task update request sent to the native (Velox)
+worker, so that only one is held on the executor heap at a time instead of all of them. This
+reduces executor heap use for tasks with many splits. The request sent to the worker is the
+same either way.
+
+The corresponding configuration property is :ref:`admin/properties:\`\`native-execution-stream-task-sources-enabled\`\``.
+
 Geometry Properties
 -------------------
 

@@ -73,6 +73,7 @@ public class PrestoSparkConfig
     private boolean adaptiveJoinSideSwitchingEnabled;
     private String nativeExecutionBroadcastBasePath;
     private boolean nativeTerminateWithCoreWhenUnresponsiveEnabled;
+    private boolean nativeExecutionStreamTaskSourcesEnabled;
     private Duration nativeTerminateWithCoreTimeout = new Duration(5, MINUTES);
     private boolean isDynamicPrestoMemoryPoolTuningEnabled;
     private double dynamicPrestoMemoryPoolTuningFraction = 0.7;
@@ -541,6 +542,19 @@ public class PrestoSparkConfig
     public PrestoSparkConfig setNativeTerminateWithCoreWhenUnresponsiveEnabled(boolean nativeTerminateWithCoreWhenUnresponsiveEnabled)
     {
         this.nativeTerminateWithCoreWhenUnresponsiveEnabled = nativeTerminateWithCoreWhenUnresponsiveEnabled;
+        return this;
+    }
+
+    public boolean isNativeExecutionStreamTaskSourcesEnabled()
+    {
+        return nativeExecutionStreamTaskSourcesEnabled;
+    }
+
+    @Config("native-execution-stream-task-sources-enabled")
+    @ConfigDescription("Deserialize task sources directly into the native task update request instead of materializing them all first")
+    public PrestoSparkConfig setNativeExecutionStreamTaskSourcesEnabled(boolean nativeExecutionStreamTaskSourcesEnabled)
+    {
+        this.nativeExecutionStreamTaskSourcesEnabled = nativeExecutionStreamTaskSourcesEnabled;
         return this;
     }
 

@@ -124,6 +124,7 @@ import com.facebook.presto.spark.execution.BroadcastFileInfo;
 import com.facebook.presto.spark.execution.PrestoSparkBroadcastTableCacheManager;
 import com.facebook.presto.spark.execution.PrestoSparkExecutionExceptionFactory;
 import com.facebook.presto.spark.execution.http.BatchTaskUpdateRequest;
+import com.facebook.presto.spark.execution.http.StreamingBatchTaskUpdateRequest;
 import com.facebook.presto.spark.execution.shuffle.PrestoSparkLocalShuffleReadInfo;
 import com.facebook.presto.spark.execution.shuffle.PrestoSparkLocalShuffleWriteInfo;
 import com.facebook.presto.spark.execution.task.PrestoSparkNativeTaskExecutorFactory;
@@ -321,6 +322,7 @@ public class PrestoSparkModule
         jsonCodecBinder(binder).bindJsonCodec(PrestoSparkLocalShuffleReadInfo.class);
         jsonCodecBinder(binder).bindJsonCodec(PrestoSparkLocalShuffleWriteInfo.class);
         jsonCodecBinder(binder).bindJsonCodec(BatchTaskUpdateRequest.class);
+        jsonCodecBinder(binder).bindJsonCodec(StreamingBatchTaskUpdateRequest.class);
         jsonCodecBinder(binder).bindJsonCodec(BroadcastFileInfo.class);
         jsonCodecBinder(binder).bindJsonCodec(SimplePlanFragment.class);
         binder.bind(SimplePlanFragmentSerde.class).to(JsonCodecSimplePlanFragmentSerde.class).in(Scopes.SINGLETON);
